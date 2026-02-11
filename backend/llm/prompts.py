@@ -25,7 +25,18 @@ BASE_PROMPT = (
     "'the researcher') — NEVER wrap it in brackets.\n"
     "4. If you are unsure about something, say so clearly. Do not fabricate facts.\n"
     "5. Base your answers ONLY on the provided document content. Do not use outside "
-    "knowledge about specific cases or people.\n"
+    "knowledge about specific cases or people.\n\n"
+    "CITATION RULES:\n"
+    "- When you make a claim based on the provided sources, cite it inline using "
+    "the source number in square brackets, e.g. [1], [2].\n"
+    "- Place citations at the end of the relevant sentence, before the period. "
+    'Example: "The agreement specifies a salary of $145,000 [1]."\n'
+    "- Only cite sources that directly support your statement. Do not cite speculatively.\n"
+    "- If multiple sources support a claim, cite all of them: [1][3].\n"
+    "- If a claim is not supported by any source, do not add a citation — state that "
+    "the information is not found in the provided documents.\n"
+    "- NEVER fabricate citation numbers. Only use numbers that correspond to the "
+    "sources provided above.\n"
 )
 
 EXPERT_PROMPTS: dict[str, str] = {

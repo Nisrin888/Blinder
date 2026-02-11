@@ -1,49 +1,57 @@
-import { useState } from 'react';
 import { useChat } from '../context/ChatContext';
 
-export function CitationPanel({ citations }) {
+const CIRCLED_NUMBERS = ['', '\u2460', '\u2461', '\u2462', '\u2463', '\u2464', '\u2465', '\u2466', '\u2467', '\u2468', '\u2469'];
+
+function getCircledNumber(n) {
+  return CIRCLED_NUMBERS[n] || `(${n})`;
+}
+
+export function CitationPanel({ citations, messageId }) {
   const { viewMode } = useChat();
-  const [expandedIdx, setExpandedIdx] = useState(null);
 
   if (!citations || citations.length === 0) return null;
 
-  const toggle = (idx) => {
-    setExpandedIdx(expandedIdx === idx ? null : idx);
-  };
+  // Sort by marker number if available, otherwise by score
+  const sorted = [...citations].sort((a, b) => {
+    if (a.marker != null && b.marker != null) return a.marker - b.marker;
+    if (a.marker != null) return -1;
+    if (b.marker != null) return 1;
+    return b.score - a.score;
+  });
 
   return (
     <div className="citations">
-      <div className="citations__label">Sources</div>
-      <div className="citations__chips">
-        {citations.map((c, idx) => (
-          <div key={idx} className="citations__chip-wrapper">
-            <button
-              className={`citations__chip ${expandedIdx === idx ? 'citations__chip--active' : ''}`}
-              onClick={() => toggle(idx)}
+      <div className="citations__header">
+        Sources ({sorted.length})
+      </div>
+      <div className="citations__list">
+        {sorted.map((c, idx) => {
+          const markerNum = c.marker ?? idx + 1;
+          const snippet = viewMode === 'lawyer' ? c.snippet_lawyer : c.snippet_blinded;
+
+          return (
+            <div
+              key={idx}
+              className="citations__item"
+              id={`citation-source-${messageId}-${markerNum}`}
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                <polyline points="14 2 14 8 20 8" />
-                <line x1="16" y1="13" x2="8" y2="13" />
-                <line x1="16" y1="17" x2="8" y2="17" />
-              </svg>
-              <span className="citations__chip-name">{c.filename}</span>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                {expandedIdx === idx
-                  ? <polyline points="18 15 12 9 6 15" />
-                  : <polyline points="6 9 12 15 18 9" />
-                }
-              </svg>
-            </button>
-            {expandedIdx === idx && (
-              <div className="citations__snippet">
-                <p>
-                  {viewMode === 'lawyer' ? c.snippet_lawyer : c.snippet_blinded}
-                </p>
+              <div className="citations__item-header">
+                <span className="citations__marker">{getCircledNumber(markerNum)}</span>
+                <span className="citations__filename">{c.filename}</span>
+                {c.score > 0 && (
+                  <span className="citations__score">
+                    {Math.round(c.score * 100)}%
+                  </span>
+                )}
               </div>
-            )}
-          </div>
-        ))}
+              {snippet && (
+                <div className="citations__snippet">
+                  <p>{snippet}</p>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

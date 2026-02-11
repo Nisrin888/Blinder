@@ -67,6 +67,7 @@ class CitationResponse(BaseModel):
     score: float
     snippet_blinded: str
     snippet_lawyer: str
+    marker: int | None = None  # inline citation number [N]
 
 
 # --- Chat Schemas ---

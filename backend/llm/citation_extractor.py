@@ -30,6 +30,7 @@ class Citation:
     score: float
     snippet_blinded: str
     snippet_lawyer: str  # filled in later by depseudonymizer
+    marker: int | None = None  # inline citation number [N], None for BM25-only
 
 
 class CitationExtractor:
@@ -111,6 +112,59 @@ class CitationExtractor:
                 score=round(normalized, 3),
                 snippet_blinded=snippet,
                 snippet_lawyer="",  # filled by caller
+            ))
+
+        return citations
+
+    def extract_inline(
+        self,
+        response_text: str,
+        source_metadata: list[dict],
+        source_texts: list[str],
+    ) -> list[Citation]:
+        """Extract inline [N] citation markers from the LLM response.
+
+        source_metadata is a list of {"index": N, "filename": ..., "document_id": ...}.
+        source_texts is the list of blinded texts corresponding to each source.
+        Returns Citation objects with marker set to the inline number.
+        """
+        # Find all [N] markers in the response
+        markers_found = set(int(m) for m in re.findall(r"\[(\d+)\]", response_text))
+        # Filter out pseudonym-like patterns: [PERSON_1] would not match \d+ so we're safe
+
+        valid_by_index = {m["index"]: m for m in source_metadata}
+        citations: list[Citation] = []
+
+        for marker_num in sorted(markers_found):
+            meta = valid_by_index.get(marker_num)
+            if meta is None:
+                continue
+            # Find the corresponding source text
+            src_idx = marker_num - 1  # 0-based
+            if src_idx < 0 or src_idx >= len(source_texts):
+                continue
+
+            source_text = source_texts[src_idx]
+
+            # Extract a relevant snippet from the source
+            response_tokens = self._tokenize(response_text)
+            snippet = self._extract_snippet(source_text, response_tokens)
+
+            # Compute a BM25-lite relevance score for this source
+            response_token_set = set(response_tokens)
+            source_tokens = set(self._tokenize(source_text))
+            overlap = len(response_token_set & source_tokens)
+            total = len(response_token_set) if response_token_set else 1
+            score = round(min(overlap / total, 1.0), 3)
+
+            citations.append(Citation(
+                document_id=meta["document_id"],
+                filename=meta["filename"],
+                chunk_index=0,
+                score=score,
+                snippet_blinded=snippet,
+                snippet_lawyer="",  # filled by caller
+                marker=marker_num,
             ))
 
         return citations

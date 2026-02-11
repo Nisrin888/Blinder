@@ -1,11 +1,21 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 
 from llm.providers import LLMProvider
 from llm.prompts import get_system_prompt
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class SourceMeta:
+    """Metadata for a numbered source passed to the LLM."""
+
+    index: int          # 1-based source number used in [N] citations
+    filename: str
+    document_id: str
 
 
 class ContextBuilder:
@@ -23,25 +33,29 @@ class ContextBuilder:
         pseudonym_legend: list[str] | None = None,
         domain: str = "general",
         retrieved_chunks: list[str] | None = None,
+        source_metadata: list[SourceMeta] | None = None,
     ) -> list[dict[str, str]]:
         """Build the message list for the LLM.
 
         If retrieved_chunks is provided (hybrid RAG mode), uses those instead
         of full documents. Otherwise tries context-stuffing with full docs.
+
+        source_metadata, when provided, numbers each chunk/document so the LLM
+        can produce inline citations like [1], [2].
         """
         system_prompt = get_system_prompt(domain)
 
         if retrieved_chunks is not None:
             # RAG mode — use pre-retrieved chunks instead of full docs
             logger.info("Using %d pre-retrieved chunks (hybrid RAG mode)", len(retrieved_chunks))
-            doc_text = "\n\n---\n\n".join(retrieved_chunks)
+            doc_text = self._format_numbered_sources(retrieved_chunks, source_metadata)
             return self._build_stuffed(system_prompt, doc_text, conversation_history, new_prompt, pseudonym_legend)
 
         # Stuff mode — try to fit full documents
         context_window = await self.client.get_context_window_size()
         max_tokens = int(context_window * self.threshold)
 
-        doc_text = self._combine_documents(blinded_documents)
+        doc_text = self._format_numbered_sources(blinded_documents, source_metadata)
         total_estimate = self._estimate_tokens(
             system_prompt + doc_text + new_prompt
         ) + sum(self._estimate_tokens(m.get("content", "")) for m in conversation_history)
@@ -58,6 +72,23 @@ class ContextBuilder:
                 blinded_documents, new_prompt, max_tokens, conversation_history, system_prompt
             )
             return self._build_stuffed(system_prompt, relevant_chunks, conversation_history, new_prompt, pseudonym_legend)
+
+    def _format_numbered_sources(
+        self,
+        texts: list[str],
+        source_metadata: list[SourceMeta] | None,
+    ) -> str:
+        """Format document texts as numbered sources for inline citation."""
+        if not texts:
+            return ""
+        if not source_metadata or len(source_metadata) != len(texts):
+            # Fallback to legacy unnumbered format
+            return self._combine_documents(texts)
+
+        parts: list[str] = []
+        for meta, text in zip(source_metadata, texts):
+            parts.append(f"[Source {meta.index} | {meta.filename}]\n{text}")
+        return "\n\n".join(parts)
 
     def _combine_documents(self, documents: list[str]) -> str:
         if not documents:
@@ -91,21 +122,23 @@ class ContextBuilder:
             messages.append({
                 "role": "user",
                 "content": (
-                    "### BEGIN DOCUMENT ###\n"
+                    "### SOURCES ###\n"
                     f"{doc_content}\n"
-                    "### END DOCUMENT ###\n"
+                    "### END SOURCES ###\n"
                     f"{legend_text}\n"
-                    "The above documents have been provided for analysis. "
+                    "The above sources have been provided for analysis. "
                     "All identifying information has been replaced with pseudonyms for privacy. "
-                    "Use ONLY the exact pseudonyms listed above in your responses."
+                    "Use ONLY the exact pseudonyms listed above in your responses. "
+                    "When citing information, use the source number in square brackets, e.g. [1], [2]."
                 ),
             })
             messages.append({
                 "role": "assistant",
                 "content": (
-                    "I have received the documents. I will use ONLY the exact "
+                    "I have received the sources. I will use ONLY the exact "
                     "pseudonyms from the documents (like [PERSON_1], [ORG_1], etc.) "
-                    "and will never create new pseudonym formats. "
+                    "and will never create new pseudonym formats. I will cite sources "
+                    "inline using [1], [2], etc. "
                     "How can I help you analyze these documents?"
                 ),
             })

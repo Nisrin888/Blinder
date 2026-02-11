@@ -17,7 +17,7 @@ from blinder.encryption import derive_key
 from blinder.pipeline import BlinderPipeline, HighSeverityThreatError
 from blinder.vault import Vault, VaultEntry
 from llm.client import get_llm_client
-from llm.context_builder import ContextBuilder
+from llm.context_builder import ContextBuilder, SourceMeta
 from llm.citation_extractor import CitationExtractor, DocumentChunk
 from llm.domain_router import detect_domain
 from config import get_settings
@@ -139,9 +139,8 @@ async def send_message(
 
                 # 5. Load blinded documents (preserving metadata for citations)
                 documents = await repositories.get_documents(gen_db, session_id)
-                blinded_documents = [
-                    doc.blinded_text for doc in documents if doc.blinded_text
-                ]
+                docs_with_text = [doc for doc in documents if doc.blinded_text]
+                blinded_documents = [doc.blinded_text for doc in docs_with_text]
                 doc_chunks = [
                     DocumentChunk(
                         document_id=str(doc.id),
@@ -149,7 +148,17 @@ async def send_message(
                         chunk_index=0,
                         text=doc.blinded_text,
                     )
-                    for doc in documents if doc.blinded_text
+                    for doc in docs_with_text
+                ]
+
+                # Build numbered source metadata for inline citations
+                source_metadata = [
+                    SourceMeta(
+                        index=i + 1,
+                        filename=doc.filename,
+                        document_id=str(doc.id),
+                    )
+                    for i, doc in enumerate(docs_with_text)
                 ]
 
                 # 6. Create LLM client (uses provider/model from request, or global default)
@@ -175,6 +184,10 @@ async def send_message(
                 # Strategy: tabular extraction → hybrid RAG → context-stuffing
                 context_builder = ContextBuilder(llm_client)
                 retrieved_chunks = None
+                rag_chunk_results = None  # track DB chunk objects for source metadata
+
+                # Build doc_id → filename lookup for RAG metadata
+                doc_filename_map = {str(doc.id): doc.filename for doc in docs_with_text}
 
                 # 7a. Try structured tabular query first (fastest, most accurate)
                 tabular_result = try_tabular_query(blinded_prompt, blinded_documents)
@@ -211,7 +224,7 @@ async def send_message(
                             max(chunk_budget_tokens // 512, 3),
                         )
 
-                        chunk_results = await repositories.hybrid_search_chunks(
+                        rag_chunk_results = await repositories.hybrid_search_chunks(
                             gen_db,
                             session_id,
                             blinded_prompt,
@@ -219,11 +232,30 @@ async def send_message(
                             top_k=adaptive_top_k,
                             rrf_k=settings.rrf_k,
                         )
-                        retrieved_chunks = [chunk.content for chunk, score in chunk_results]
+                        retrieved_chunks = [chunk.content for chunk, score in rag_chunk_results]
                         logger.info(
                             "RAG mode: retrieved %d chunks (top_k=%d, budget=%d tokens, window=%d)",
                             len(retrieved_chunks), adaptive_top_k, chunk_budget_tokens, max_tokens,
                         )
+
+                # Determine active source metadata + texts for citation extraction
+                active_source_metadata = source_metadata
+                active_source_texts = blinded_documents
+                if retrieved_chunks is not None:
+                    if rag_chunk_results is not None:
+                        # RAG mode: build metadata from actual retrieved DB chunks
+                        active_source_metadata = [
+                            SourceMeta(
+                                index=i + 1,
+                                filename=doc_filename_map.get(str(chunk.document_id), f"chunk_{i+1}"),
+                                document_id=str(chunk.document_id),
+                            )
+                            for i, (chunk, _score) in enumerate(rag_chunk_results)
+                        ]
+                    else:
+                        # Tabular mode: keep doc-level source_metadata as-is
+                        pass
+                    active_source_texts = retrieved_chunks
 
                 llm_messages = await context_builder.build_messages(
                     blinded_documents=blinded_documents,
@@ -231,6 +263,7 @@ async def send_message(
                     new_prompt=blinded_prompt,
                     domain=domain,
                     retrieved_chunks=retrieved_chunks,
+                    source_metadata=active_source_metadata,
                 )
 
                 # 8. Yield start event
@@ -249,9 +282,23 @@ async def send_message(
                 # 10. Restore pseudonyms in the full response
                 restored_response = pipeline.restore_response(full_blinded_response)
 
-                # 11. Extract citations by scoring document chunks against LLM response
-                extractor = CitationExtractor(max_citations=3)
-                citations = extractor.extract(full_blinded_response, doc_chunks)
+                # 11. Extract inline citations [N], fallback to BM25
+                extractor = CitationExtractor(max_citations=5)
+                source_meta_dicts = [
+                    {"index": m.index, "filename": m.filename, "document_id": m.document_id}
+                    for m in active_source_metadata
+                ] if active_source_metadata else []
+
+                citations = extractor.extract_inline(
+                    full_blinded_response,
+                    source_meta_dicts,
+                    active_source_texts,
+                ) if source_meta_dicts and active_source_texts else []
+
+                # Fallback: if no inline citations found, use BM25 post-hoc
+                if not citations and doc_chunks:
+                    citations = extractor.extract(full_blinded_response, doc_chunks)
+
                 citation_dicts = [
                     {
                         "document_id": c.document_id,
@@ -260,6 +307,7 @@ async def send_message(
                         "score": c.score,
                         "snippet_blinded": c.snippet_blinded,
                         "snippet_lawyer": pipeline.restore_response(c.snippet_blinded),
+                        "marker": c.marker,
                     }
                     for c in citations
                 ]

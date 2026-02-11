@@ -7,25 +7,7 @@
 ## How It Works
 
 ```
-user uploads document / asks question
-            |
-            v
-   [Dual-Gate PII Scanner]          ← Presidio (patterns) + spaCy NER (context)
-            |
-            v
-   [Vault — Pseudonymization]       ← "Jane Smith" → [PERSON_1], encrypted AES-256-GCM
-            |
-            v
-   [Threat Sanitizer]               ← Unicode attacks, prompt injection, jailbreak detection
-            |
-            v
-   [LLM Inference]                  ← Ollama (local) or OpenAI / Anthropic (cloud)
-            |
-            v
-   [De-pseudonymization]            ← [PERSON_1] → "Jane Smith"
-            |
-            v
-   Lawyer sees real names in response
+![alt text](resources/image-1.png)
 ```
 
 The LLM only ever sees pseudonyms like `[PERSON_1]`, `[ORG_2]`, `[SSN_1]`. Even when using cloud models (GPT-4o, Claude), your clients' real identities never leave your machine.
@@ -57,7 +39,7 @@ The LLM only ever sees pseudonyms like `[PERSON_1]`, `[ORG_2]`, `[SSN_1]`. Even 
 ### 1. Clone and configure
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/blinder.git
+git clone https://github.com/Nisrin888/Blinder.git
 cd blinder
 
 # Create your environment file
