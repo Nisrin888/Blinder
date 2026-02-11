@@ -328,9 +328,12 @@ def _handle_count(query: str, tables: list[TabularData]) -> QueryResult:
             threshold = float(threshold_match.group(2))
             count = sum(1 for val, _ in numeric_vals if val > threshold)
             context = (
-                f"Count of rows where {col_name} > {threshold}: {count}\n"
-                f"(Out of {len(numeric_vals)} rows with valid {col_name} values, "
-                f"total dataset: {table.num_rows} rows)"
+                f"ANALYSIS METHOD: Scanned {table.num_rows} rows in the dataset. "
+                f"Parsed the '{col_name}' column as numeric values across "
+                f"{len(numeric_vals)} valid rows (non-numeric entries excluded). "
+                f"Applied filter: {col_name} > {threshold}.\n\n"
+                f"RESULT: {count} out of {len(numeric_vals)} rows have "
+                f"{col_name} greater than {threshold}."
             )
             return QueryResult(success=True, context=context, query_type="count")
 
@@ -339,14 +342,22 @@ def _handle_count(query: str, tables: list[TabularData]) -> QueryResult:
             threshold = float(threshold_match.group(2))
             count = sum(1 for val, _ in numeric_vals if val < threshold)
             context = (
-                f"Count of rows where {col_name} < {threshold}: {count}\n"
-                f"(Out of {len(numeric_vals)} rows with valid {col_name} values, "
-                f"total dataset: {table.num_rows} rows)"
+                f"ANALYSIS METHOD: Scanned {table.num_rows} rows in the dataset. "
+                f"Parsed the '{col_name}' column as numeric values across "
+                f"{len(numeric_vals)} valid rows (non-numeric entries excluded). "
+                f"Applied filter: {col_name} < {threshold}.\n\n"
+                f"RESULT: {count} out of {len(numeric_vals)} rows have "
+                f"{col_name} less than {threshold}."
             )
             return QueryResult(success=True, context=context, query_type="count")
 
         # No threshold — just count all rows
-        context = f"Total rows with {col_name} data: {len(numeric_vals)} (out of {table.num_rows} total rows)"
+        context = (
+            f"ANALYSIS METHOD: Scanned {table.num_rows} rows in the dataset. "
+            f"Counted rows with valid '{col_name}' data.\n\n"
+            f"RESULT: {len(numeric_vals)} rows have valid {col_name} data "
+            f"(out of {table.num_rows} total rows)."
+        )
         return QueryResult(success=True, context=context, query_type="count")
 
     return QueryResult(success=False, context="No tabular data to count.", query_type="count")
@@ -367,9 +378,12 @@ def _handle_average(query: str, tables: list[TabularData]) -> QueryResult:
         values = [v for v, _ in numeric_vals]
         avg = sum(values) / len(values)
         context = (
-            f"Average {col_name}: {avg:.2f}\n"
-            f"(Computed from {len(values)} rows, "
-            f"min: {min(values):.2f}, max: {max(values):.2f})"
+            f"ANALYSIS METHOD: Extracted numeric values from the '{col_name}' column "
+            f"across {len(values)} valid rows (out of {table.num_rows} total). "
+            f"Computed the arithmetic mean: sum of all values / count.\n\n"
+            f"RESULT: Average {col_name} = {avg:.2f} "
+            f"(min: {min(values):.2f}, max: {max(values):.2f}, "
+            f"computed from {len(values)} rows)."
         )
         return QueryResult(success=True, context=context, query_type="average")
 
@@ -391,8 +405,11 @@ def _handle_sum(query: str, tables: list[TabularData]) -> QueryResult:
         values = [v for v, _ in numeric_vals]
         total = sum(values)
         context = (
-            f"Sum of {col_name}: {total:.2f}\n"
-            f"(Computed from {len(values)} rows)"
+            f"ANALYSIS METHOD: Extracted numeric values from the '{col_name}' column "
+            f"across {len(values)} valid rows (out of {table.num_rows} total). "
+            f"Summed all values.\n\n"
+            f"RESULT: Sum of {col_name} = {total:.2f} "
+            f"(from {len(values)} rows)."
         )
         return QueryResult(success=True, context=context, query_type="sum")
 
@@ -421,9 +438,11 @@ def _handle_extrema(
             label = "lowest"
 
         context = (
-            f"Row with {label} {col_name} ({best_val}):\n"
-            f"{_format_row(table.header, best_row)}\n"
-            f"(Out of {len(numeric_vals)} rows with valid {col_name} values)"
+            f"ANALYSIS METHOD: Extracted numeric values from the '{col_name}' column "
+            f"across {len(numeric_vals)} valid rows (out of {table.num_rows} total). "
+            f"Sorted by {col_name} to find the {label} value.\n\n"
+            f"RESULT: Row with {label} {col_name} ({best_val}):\n"
+            f"{_format_row(table.header, best_row)}"
         )
         return QueryResult(success=True, context=context, query_type="extrema")
 
@@ -459,7 +478,12 @@ def _handle_filter(query: str, tables: list[TabularData]) -> QueryResult:
 
         # Cap at 20 rows to not overwhelm the LLM
         display_matches = matches[:20]
-        parts = [f"Found {len(matches)} rows matching filter on {col_name}:\n"]
+        parts = [
+            f"ANALYSIS METHOD: Scanned {table.num_rows} rows in the dataset. "
+            f"Parsed the '{col_name}' column as numeric values across "
+            f"{len(numeric_vals)} valid rows. Applied filter to find matching rows.\n\n"
+            f"RESULT: Found {len(matches)} rows matching filter on {col_name}:\n"
+        ]
         for val, row in display_matches:
             parts.append(_format_row(table.header, row))
             parts.append("")  # blank line between rows
