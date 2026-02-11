@@ -37,10 +37,12 @@ class Depseudonymizer:
         )
 
         result = text
+        unresolved: list[str] = []
         for raw in unique_pseudonyms:
             bracketed = f"[{raw}]"
             real_value = self._vault.get_real_value(bracketed)
             if real_value is None:
+                unresolved.append(bracketed)
                 continue
 
             # Handle possessive: [PERSON_1]'s -> Jane Smith's
@@ -48,4 +50,51 @@ class Depseudonymizer:
             # Standard replacement.
             result = result.replace(bracketed, real_value)
 
+        # Clean up hallucinated pseudonyms the LLM invented (not in vault).
+        # Convert e.g. "[PROF_1]" → "PROF_1" so they read naturally instead
+        # of looking like broken tokens in the lawyer view.
+        for bracketed in unresolved:
+            # Extract a human-readable label: [ARTICLE_1] → "the article"
+            label = _humanize_pseudonym(bracketed)
+            result = result.replace(f"{bracketed}'s", f"{label}'s")
+            result = result.replace(bracketed, label)
+
         return result
+
+
+def _humanize_pseudonym(pseudonym: str) -> str:
+    """Convert an unresolvable pseudonym to a readable placeholder.
+
+    ``[PROF_1]`` → ``the professor``
+    ``[ARTICLE_1]`` → ``the article``
+    ``[UNKNOWN_THING_3]`` → ``UNKNOWN_THING_3``
+    """
+    # Strip brackets: "[PROF_1]" → "PROF_1"
+    inner = pseudonym.strip("[]")
+    # Split off the counter: "PROF_1" → "PROF"
+    parts = inner.rsplit("_", 1)
+    if len(parts) == 2 and parts[1].isdigit():
+        type_name = parts[0]
+    else:
+        return inner
+
+    # Map common hallucinated types to natural language
+    friendly: dict[str, str] = {
+        "PROF": "the professor",
+        "PROFESSOR": "the professor",
+        "ARTICLE": "the article",
+        "PAPER": "the paper",
+        "STUDY": "the study",
+        "REPORT": "the report",
+        "AUTHOR": "the author",
+        "RESEARCHER": "the researcher",
+        "DOCTOR": "the doctor",
+        "COMPANY": "the company",
+        "PARTY": "the party",
+        "CLIENT": "the client",
+        "WITNESS": "the witness",
+        "JUDGE": "the judge",
+        "DEFENDANT": "the defendant",
+        "PLAINTIFF": "the plaintiff",
+    }
+    return friendly.get(type_name, inner)
