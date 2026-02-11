@@ -93,3 +93,26 @@ class MessageResponse(BaseModel):
 
 class ChatHistoryResponse(BaseModel):
     messages: list[MessageResponse]
+
+
+# --- Audit Log Schemas ---
+
+class AuditLogResponse(BaseModel):
+    id: UUID
+    session_id: UUID
+    event_type: str
+    provider: str | None = None
+    model: str | None = None
+    payload_hash: str
+    token_estimate: int | None = None
+    metadata_: dict = Field(default_factory=dict, alias="metadata_")
+    created_at: datetime
+
+    model_config = {"from_attributes": True, "populate_by_name": True}
+
+
+class AuditSummaryResponse(BaseModel):
+    session_id: UUID
+    total_events: int
+    events_by_type: dict[str, int]
+    total_tokens: int

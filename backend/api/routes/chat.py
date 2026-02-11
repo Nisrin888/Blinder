@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from uuid import UUID
@@ -266,6 +267,25 @@ async def send_message(
                     source_metadata=active_source_metadata,
                 )
 
+                # 7c. Audit log — record the LLM request payload
+                request_payload_json = json.dumps(llm_messages, ensure_ascii=False)
+                request_hash = hashlib.sha256(request_payload_json.encode()).hexdigest()
+                request_token_est = sum(
+                    len(m.get("content", "")) // 4 for m in llm_messages
+                )
+                await repositories.create_audit_log(
+                    gen_db,
+                    session_id=session_id,
+                    event_type="llm_request",
+                    payload_blinded=request_payload_json,
+                    payload_hash=request_hash,
+                    provider=llm_client.provider_name,
+                    model=llm_client.model_name,
+                    token_estimate=request_token_est,
+                    metadata_={"domain": domain},
+                )
+                await gen_db.commit()
+
                 # 8. Yield start event
                 yield {
                     "data": json.dumps({"type": "start"}),
@@ -320,6 +340,22 @@ async def send_message(
                     lawyer_content=restored_response,
                     blinded_content=full_blinded_response,
                     citations=citation_dicts,
+                )
+                await gen_db.commit()
+
+                # 12b. Audit log — record the LLM response
+                response_hash = hashlib.sha256(full_blinded_response.encode()).hexdigest()
+                response_token_est = len(full_blinded_response) // 4
+                await repositories.create_audit_log(
+                    gen_db,
+                    session_id=session_id,
+                    event_type="llm_response",
+                    payload_blinded=full_blinded_response,
+                    payload_hash=response_hash,
+                    provider=llm_client.provider_name,
+                    model=llm_client.model_name,
+                    token_estimate=response_token_est,
+                    metadata_={"domain": domain},
                 )
                 await gen_db.commit()
 

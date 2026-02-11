@@ -122,6 +122,36 @@ class Message(Base):
     __table_args__ = (Index("idx_messages_session", "session_id", "created_at"),)
 
 
+class AuditLog(Base):
+    __tablename__ = "audit_log"
+
+    id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+        default=uuid.uuid4,
+    )
+    session_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("sessions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    event_type = Column(String(50), nullable=False)
+    provider = Column(String(50), nullable=True)
+    model = Column(String(100), nullable=True)
+    payload_blinded = Column(Text, nullable=False)
+    payload_hash = Column(String(64), nullable=False)
+    token_estimate = Column(Integer, nullable=True)
+    metadata_ = Column("metadata", JSON, default=dict, server_default=text("'{}'::jsonb"))
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        Index("idx_audit_session_created", "session_id", "created_at"),
+    )
+
+
 class DocumentChunk(Base):
     __tablename__ = "document_chunks"
 

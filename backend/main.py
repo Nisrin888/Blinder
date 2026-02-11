@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config import get_settings
 from db.database import init_db
-from api.routes import sessions, documents, chat, models
+from api.routes import sessions, documents, chat, models, audit
 
 settings = get_settings()
 
@@ -59,6 +59,7 @@ app.include_router(sessions.router, prefix="/api/sessions", tags=["sessions"])
 app.include_router(documents.router, prefix="/api/sessions", tags=["documents"])
 app.include_router(chat.router, prefix="/api/sessions", tags=["chat"])
 app.include_router(models.router, prefix="/api/models", tags=["models"])
+app.include_router(audit.router, prefix="/api/sessions", tags=["audit"])
 
 
 @app.get("/api/health")

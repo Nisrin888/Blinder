@@ -6,7 +6,7 @@ import uuid
 from sqlalchemy import select, delete, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.models import Session, VaultEntry, Document, Message, DocumentChunk
+from db.models import Session, VaultEntry, Document, Message, DocumentChunk, AuditLog
 
 logger = logging.getLogger(__name__)
 
@@ -436,3 +436,47 @@ async def hybrid_search_chunks(
     chunk_map = {chunk.id: chunk for chunk in result.scalars().all()}
 
     return [(chunk_map[cid], rrf_scores[cid]) for cid in sorted_ids if cid in chunk_map]
+
+
+# ---------------------------------------------------------------------------
+# Audit Log CRUD
+# ---------------------------------------------------------------------------
+
+async def create_audit_log(
+    db: AsyncSession,
+    session_id: uuid.UUID,
+    event_type: str,
+    payload_blinded: str,
+    payload_hash: str,
+    provider: str | None = None,
+    model: str | None = None,
+    token_estimate: int | None = None,
+    metadata_: dict | None = None,
+) -> AuditLog:
+    """Create a new audit log entry."""
+    entry = AuditLog(
+        id=uuid.uuid4(),
+        session_id=session_id,
+        event_type=event_type,
+        provider=provider,
+        model=model,
+        payload_blinded=payload_blinded,
+        payload_hash=payload_hash,
+        token_estimate=token_estimate,
+        metadata_=metadata_ or {},
+    )
+    db.add(entry)
+    await db.flush()
+    return entry
+
+
+async def get_audit_logs(
+    db: AsyncSession, session_id: uuid.UUID
+) -> list[AuditLog]:
+    """Return all audit log entries for a session ordered by created_at asc."""
+    result = await db.execute(
+        select(AuditLog)
+        .where(AuditLog.session_id == session_id)
+        .order_by(AuditLog.created_at.asc())
+    )
+    return list(result.scalars().all())
