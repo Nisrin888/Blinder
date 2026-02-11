@@ -6,9 +6,7 @@
 
 ## How It Works
 
-```
-![alt text](resources/image-1.png)
-```
+![How It Works](resources/image-1.png)
 
 The LLM only ever sees pseudonyms like `[PERSON_1]`, `[ORG_2]`, `[SSN_1]`. Even when using cloud models (GPT-4o, Claude), your clients' real identities never leave your machine.
 
