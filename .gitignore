@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+venv/
+.venv/
+*.egg
+
+# Environment / Secrets
+.env
+*.env.local
+backend/.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Node
+node_modules/
+frontend/dist/
+
+# Database
+*.db
+*.sqlite3
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Claude Code (local agent state + instructions)
+.claude/
+claude.md
+CLAUDE.md
+
+# Private docs (not part of the open-source distribution)
+docs/
+
+# Sample data / test fixtures with PII
+documents/
+test_sample_data/
+
+# Byte-compiled / cached
+*.pyc
+*.pyo
